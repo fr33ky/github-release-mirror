@@ -4,9 +4,18 @@ REPO=${1}
 if [ -z ${2+x} ]; then MATCH="."; else MATCH="${2}"; fi
 
 readonly MIRROR_DIR="./mirror"
-SRC_URL="https://api.github.com/repos/${REPO}/releases"
+URL="https://api.github.com/repos/${REPO}"
 
-RELEASES=$(curl --silent "${SRC_URL}" | jq '[.[] | {tag_name: .tag_name, draft: .draft, assets: [.assets[].browser_download_url]}]')
+mkdir -p "${MIRROR_DIR}/.etags"
+
+NEW_TAG=$(curl --etag-save "${MIRROR_DIR}/.etags/${REPO//\//_}-tags.etag" --etag-compare "${MIRROR_DIR}/.etags/${REPO//\//_}-tags.etag" --silent --output /dev/null --write-out "%{http_code}" "${URL}/tags")
+
+if [[ ${NEW_TAG} -eq 304 ]]; then
+  echo "No change for ${REPO}"
+  exit 0
+fi
+
+RELEASES=$(curl --silent "${URL}/releases" | jq '[.[] | {tag_name: .tag_name, draft: .draft, assets: [.assets[].browser_download_url]}]')
 
 for RELEASE in $(echo "${RELEASES}" | jq -r '.[] | @base64'); do
   DRAFT=$(echo "${RELEASE}" | base64 --decode | jq -r '.draft')
